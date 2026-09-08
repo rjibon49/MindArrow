@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using MindArrow.Gameplay;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace MindArrow.Board
 {
     [RequireComponent(typeof(RectTransform))]
-    public sealed class BoardView : MonoBehaviour
+    public sealed class BoardView :
+        MonoBehaviour
     {
         [Header("Grid")]
         [SerializeField, Min(2)]
@@ -16,12 +16,19 @@ namespace MindArrow.Board
         [SerializeField, Min(2)]
         private int rows = 16;
 
-        [Header("Prototype Rendering")]
-        [SerializeField, Min(2f)]
-        private float pathThickness = 18f;
-
+        [Header("Arrow Visual")]
         [SerializeField, Min(4f)]
-        private float headSize = 38f;
+        private float pathThickness = 16f;
+
+        [SerializeField, Min(8f)]
+        private float headLength = 44f;
+
+        [SerializeField, Min(8f)]
+        private float headWidth = 38f;
+
+        [Header("Snake Escape")]
+        [SerializeField, Min(0f)]
+        private float outsidePadding = 100f;
 
         private RectTransform boardRect;
 
@@ -54,6 +61,8 @@ namespace MindArrow.Board
                 new(
                     $"Arrow_{arrow.Id}",
                     typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(ArrowPathGraphic),
                     typeof(ArrowView)
                 );
 
@@ -62,38 +71,79 @@ namespace MindArrow.Board
                 false
             );
 
-            ArrowView arrowView =
-                arrowRoot.GetComponent<ArrowView>();
+            RectTransform rootRect =
+                arrowRoot.GetComponent<
+                    RectTransform
+                >();
 
-            arrowView.Initialize(
-                arrow.Id,
-                clickedCallback
-            );
+            rootRect.anchorMin =
+                Vector2.zero;
 
-            arrowRoots[arrow.Id] =
-                arrowRoot;
+            rootRect.anchorMax =
+                Vector2.one;
+
+            rootRect.offsetMin =
+                Vector2.zero;
+
+            rootRect.offsetMax =
+                Vector2.zero;
+
+            rootRect.pivot =
+                new Vector2(
+                    0.5f,
+                    0.5f
+                );
+
+            rootRect.anchoredPosition =
+                Vector2.zero;
+
+            List<Vector2> localPoints =
+                new();
 
             for (int i = 0;
-                 i < arrow.Path.Count - 1;
+                 i < arrow.Path.Count;
                  i++)
             {
-                CreateSegment(
-                    arrowRoot.transform,
-                    arrow.Path[i],
-                    arrow.Path[i + 1],
-                    arrow.Color,
-                    i
+                localPoints.Add(
+                    GridToLocal(
+                        arrow.Path[i]
+                    )
                 );
             }
 
-            CreateHead(
-                arrowRoot.transform,
-                arrow.Path[^1],
-                arrow.Color
+            ArrowPathGraphic graphic =
+                arrowRoot.GetComponent<
+                    ArrowPathGraphic
+                >();
+
+            graphic.SetPath(
+                localPoints,
+                arrow.Color,
+                pathThickness,
+                headLength,
+                headWidth
             );
+
+            ArrowView arrowView =
+                arrowRoot.GetComponent<
+                    ArrowView
+                >();
+
+            arrowView.Initialize(
+                arrow.Id,
+                clickedCallback,
+                graphic,
+                localPoints
+            );
+
+            arrowRoots[
+                arrow.Id
+            ] =
+                arrowRoot;
         }
 
-        public void RemoveArrow(int arrowId)
+        public void PlayBlockedFeedback(
+            int arrowId)
         {
             if (!arrowRoots.TryGetValue(
                     arrowId,
@@ -102,138 +152,146 @@ namespace MindArrow.Board
                 return;
             }
 
-            arrowRoots.Remove(arrowId);
+            ArrowView arrowView =
+                arrowRoot.GetComponent<
+                    ArrowView
+                >();
 
-            Destroy(arrowRoot);
+            arrowView.PlayBlockedFeedback();
+        }
+
+        public void AnimateEscape(
+            int arrowId,
+            ArrowDirection direction,
+            Action<int> completedCallback)
+        {
+            if (!arrowRoots.TryGetValue(
+                    arrowId,
+                    out GameObject arrowRoot))
+            {
+                return;
+            }
+
+            ArrowView arrowView =
+                arrowRoot.GetComponent<
+                    ArrowView
+                >();
+
+            Vector2 exitDirection =
+                GetDirectionVector(
+                    direction
+                );
+
+            float headExitDistance =
+                CalculateHeadExitDistance(
+                    arrowView.HeadLocalPosition,
+                    direction
+                );
+
+            arrowView.PlaySnakeEscape(
+                exitDirection,
+                headExitDistance,
+                completedArrowId =>
+                {
+                    arrowRoots.Remove(
+                        completedArrowId
+                    );
+
+                    Destroy(
+                        arrowRoot
+                    );
+
+                    completedCallback?.Invoke(
+                        completedArrowId
+                    );
+                }
+            );
         }
 
         public void Clear()
         {
-            foreach (GameObject arrowRoot
-                     in arrowRoots.Values)
+            foreach (
+                GameObject arrowRoot
+                in arrowRoots.Values)
             {
                 if (arrowRoot != null)
                 {
-                    Destroy(arrowRoot);
+                    Destroy(
+                        arrowRoot
+                    );
                 }
             }
 
             arrowRoots.Clear();
         }
 
-        private void CreateSegment(
-            Transform parent,
-            GridPosition start,
-            GridPosition end,
-            Color color,
-            int segmentIndex)
+        private float CalculateHeadExitDistance(
+            Vector2 headPosition,
+            ArrowDirection direction)
         {
-            bool horizontal =
-                start.Y == end.Y;
+            Rect rect =
+                boardRect.rect;
 
-            bool vertical =
-                start.X == end.X;
-
-            if (!horizontal &&
-                !vertical)
+            return direction switch
             {
-                return;
-            }
+                ArrowDirection.Up =>
+                    Mathf.Max(
+                        0f,
+                        rect.yMax -
+                        headPosition.y
+                    ) +
+                    outsidePadding,
 
-            Vector2 startPosition =
-                GridToLocal(start);
+                ArrowDirection.Right =>
+                    Mathf.Max(
+                        0f,
+                        rect.xMax -
+                        headPosition.x
+                    ) +
+                    outsidePadding,
 
-            Vector2 endPosition =
-                GridToLocal(end);
+                ArrowDirection.Down =>
+                    Mathf.Max(
+                        0f,
+                        headPosition.y -
+                        rect.yMin
+                    ) +
+                    outsidePadding,
 
-            Vector2 midpoint =
-                (startPosition + endPosition)
-                * 0.5f;
+                ArrowDirection.Left =>
+                    Mathf.Max(
+                        0f,
+                        headPosition.x -
+                        rect.xMin
+                    ) +
+                    outsidePadding,
 
-            float distance =
-                Vector2.Distance(
-                    startPosition,
-                    endPosition
-                );
-
-            Image image =
-                CreateImage(
-                    parent,
-                    $"Segment_{segmentIndex}",
-                    color
-                );
-
-            RectTransform rect =
-                image.rectTransform;
-
-            rect.anchoredPosition =
-                midpoint;
-
-            rect.sizeDelta =
-                horizontal
-                    ? new Vector2(
-                        distance + pathThickness,
-                        pathThickness
-                    )
-                    : new Vector2(
-                        pathThickness,
-                        distance + pathThickness
-                    );
+                _ =>
+                    outsidePadding
+            };
         }
 
-        private void CreateHead(
-            Transform parent,
-            GridPosition position,
-            Color color)
+        private static Vector2
+            GetDirectionVector(
+                ArrowDirection direction)
         {
-            Image image =
-                CreateImage(
-                    parent,
-                    "Head",
-                    color
-                );
+            return direction switch
+            {
+                ArrowDirection.Up =>
+                    Vector2.up,
 
-            RectTransform rect =
-                image.rectTransform;
+                ArrowDirection.Right =>
+                    Vector2.right,
 
-            rect.anchoredPosition =
-                GridToLocal(position);
+                ArrowDirection.Down =>
+                    Vector2.down,
 
-            rect.sizeDelta =
-                new Vector2(
-                    headSize,
-                    headSize
-                );
-        }
+                ArrowDirection.Left =>
+                    Vector2.left,
 
-        private static Image CreateImage(
-            Transform parent,
-            string objectName,
-            Color color)
-        {
-            GameObject gameObject =
-                new(
-                    objectName,
-                    typeof(RectTransform),
-                    typeof(CanvasRenderer),
-                    typeof(Image)
-                );
-
-            gameObject.transform.SetParent(
-                parent,
-                false
-            );
-
-            Image image =
-                gameObject.GetComponent<Image>();
-
-            image.color = color;
-
-            // IMPORTANT:
-            // Leave raycast enabled for clicking.
-            image.raycastTarget = true;
-
-            return image;
+                _ =>
+                    Vector2.right
+            };
         }
 
         private Vector2 GridToLocal(
@@ -241,32 +299,37 @@ namespace MindArrow.Board
         {
             float cellSize =
                 Mathf.Min(
-                    boardRect.rect.width
-                    / columns,
-                    boardRect.rect.height
-                    / rows
+                    boardRect.rect.width /
+                    columns,
+
+                    boardRect.rect.height /
+                    rows
                 );
 
-            float width =
-                columns * cellSize;
+            float boardWidth =
+                columns *
+                cellSize;
 
-            float height =
-                rows * cellSize;
+            float boardHeight =
+                rows *
+                cellSize;
 
             float originX =
-                -width * 0.5f +
+                -boardWidth * 0.5f +
                 cellSize * 0.5f;
 
             float originY =
-                -height * 0.5f +
+                -boardHeight * 0.5f +
                 cellSize * 0.5f;
 
             return new Vector2(
                 originX +
-                position.X * cellSize,
+                position.X *
+                cellSize,
 
                 originY +
-                position.Y * cellSize
+                position.Y *
+                cellSize
             );
         }
     }

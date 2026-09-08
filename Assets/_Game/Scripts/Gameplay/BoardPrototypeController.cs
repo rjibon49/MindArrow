@@ -3,13 +3,14 @@ using UnityEngine;
 
 namespace MindArrow.Gameplay
 {
-    public sealed class BoardPrototypeController
-        : MonoBehaviour
+    public sealed class BoardPrototypeController : MonoBehaviour
     {
         [SerializeField]
         private BoardView boardView;
 
         private BoardModel boardModel;
+
+        private bool isResolvingMove;
 
         private void Start()
         {
@@ -23,11 +24,10 @@ namespace MindArrow.Gameplay
                 return;
             }
 
-            boardModel =
-                new BoardModel(
-                    10,
-                    16
-                );
+            boardModel = new BoardModel(
+                10,
+                16
+            );
 
             Canvas.ForceUpdateCanvases();
 
@@ -36,46 +36,49 @@ namespace MindArrow.Gameplay
 
         private void CreatePrototypeLevel()
         {
-            // CYAN:
-            // Blocked by Arrow 2.
+            // CYAN
+            // Direction is automatically UP.
+            // Initially blocked by Pink.
             ArrowData arrow1 =
                 new(
                     1,
                     new Color(
                         0.15f,
                         0.80f,
-                        0.95f
+                        0.95f,
+                        1f
                     ),
-                    ArrowDirection.Right,
                     new[]
                     {
-                new GridPosition(1, 3),
-                new GridPosition(1, 7),
-                new GridPosition(4, 7),
-                new GridPosition(4, 9)
+                new GridPosition(1, 2),
+                new GridPosition(1, 5),
+                new GridPosition(2, 5),
+                new GridPosition(2, 6)
                     }
                 );
 
-            // PINK:
-            // Blocked by Arrow 3.
+            // PINK
+            // Direction is automatically RIGHT.
+            // Initially blocked by Blue.
             ArrowData arrow2 =
                 new(
                     2,
                     new Color(
                         1f,
                         0.35f,
-                        0.65f
+                        0.65f,
+                        1f
                     ),
-                    ArrowDirection.Right,
                     new[]
                     {
-                new GridPosition(3, 11),
-                new GridPosition(6, 11),
-                new GridPosition(6, 8)
+                new GridPosition(2, 8),
+                new GridPosition(2, 9),
+                new GridPosition(6, 9)
                     }
                 );
 
-            // BLUE:
+            // BLUE
+            // Direction is automatically DOWN.
             // Free at the beginning.
             ArrowData arrow3 =
                 new(
@@ -83,13 +86,14 @@ namespace MindArrow.Gameplay
                     new Color(
                         0.35f,
                         0.45f,
+                        1f,
                         1f
                     ),
-                    ArrowDirection.Right,
                     new[]
                     {
-                new GridPosition(8, 10),
-                new GridPosition(8, 13)
+                new GridPosition(9, 13),
+                new GridPosition(8, 13),
+                new GridPosition(8, 9)
                     }
                 );
 
@@ -112,6 +116,24 @@ namespace MindArrow.Gameplay
         private void HandleArrowClicked(
             int arrowId)
         {
+            // Prevent multiple arrows from being resolved
+            // while one arrow is escaping.
+            if (isResolvingMove)
+            {
+                return;
+            }
+
+            if (!boardModel.TryGetArrow(
+                    arrowId,
+                    out ArrowData arrow))
+            {
+                Debug.LogWarning(
+                    $"Arrow {arrowId} was not found."
+                );
+
+                return;
+            }
+
             bool canEscape =
                 boardModel.CanEscape(arrowId);
 
@@ -121,16 +143,38 @@ namespace MindArrow.Gameplay
                     $"Arrow {arrowId} is BLOCKED."
                 );
 
+                boardView.PlayBlockedFeedback(
+                    arrowId
+                );
+
                 return;
             }
 
             Debug.Log(
-                $"Arrow {arrowId} escaped."
+                $"Arrow {arrowId} is escaping."
             );
 
-            boardModel.RemoveArrow(arrowId);
+            isResolvingMove = true;
 
-            boardView.RemoveArrow(arrowId);
+            boardView.AnimateEscape(
+                arrowId,
+                arrow.ExitDirection,
+                HandleEscapeCompleted
+            );
+        }
+
+        private void HandleEscapeCompleted(
+            int arrowId)
+        {
+            boardModel.RemoveArrow(
+                arrowId
+            );
+
+            isResolvingMove = false;
+
+            Debug.Log(
+                $"Arrow {arrowId} escaped."
+            );
 
             CheckWin();
         }

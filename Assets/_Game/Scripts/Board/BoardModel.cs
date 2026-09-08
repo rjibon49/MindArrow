@@ -8,39 +8,62 @@ namespace MindArrow.Board
         private readonly int columns;
         private readonly int rows;
 
-        private readonly Dictionary<int, ArrowData>
-            arrows = new();
+        private readonly Dictionary<int, ArrowData> arrows =
+            new();
 
         public int ArrowCount => arrows.Count;
 
-        public BoardModel(int columns, int rows)
+        public BoardModel(
+            int columns,
+            int rows)
         {
             this.columns = columns;
             this.rows = rows;
         }
 
-        public void AddArrow(ArrowData arrow)
+        public void AddArrow(
+            ArrowData arrow)
         {
             if (arrow == null)
             {
-                Debug.LogError("Cannot add null arrow.");
+                Debug.LogError(
+                    "Cannot add null arrow."
+                );
+
                 return;
             }
 
             arrows[arrow.Id] = arrow;
         }
 
-        public bool ContainsArrow(int arrowId)
+        public bool ContainsArrow(
+            int arrowId)
         {
-            return arrows.ContainsKey(arrowId);
+            return arrows.ContainsKey(
+                arrowId
+            );
         }
 
-        public void RemoveArrow(int arrowId)
+        public bool TryGetArrow(
+            int arrowId,
+            out ArrowData arrow)
         {
-            arrows.Remove(arrowId);
+            return arrows.TryGetValue(
+                arrowId,
+                out arrow
+            );
         }
 
-        public bool CanEscape(int arrowId)
+        public void RemoveArrow(
+            int arrowId)
+        {
+            arrows.Remove(
+                arrowId
+            );
+        }
+
+        public bool CanEscape(
+            int arrowId)
         {
             if (!arrows.TryGetValue(
                     arrowId,
@@ -50,10 +73,14 @@ namespace MindArrow.Board
             }
 
             HashSet<GridPosition> movingCells =
-                ExpandPath(arrow);
+                ExpandPath(
+                    arrow
+                );
 
             HashSet<GridPosition> otherCells =
-                BuildOtherOccupancy(arrowId);
+                BuildOtherOccupancy(
+                    arrowId
+                );
 
             GetDirectionDelta(
                 arrow.ExitDirection,
@@ -64,14 +91,16 @@ namespace MindArrow.Board
             int maxSteps =
                 columns + rows + 4;
 
-            for (int step = 1;
-                 step <= maxSteps;
-                 step++)
+            for (
+                int step = 1;
+                step <= maxSteps;
+                step++)
             {
                 bool allOutside = true;
 
-                foreach (GridPosition originalCell
-                         in movingCells)
+                foreach (
+                    GridPosition originalCell
+                    in movingCells)
                 {
                     GridPosition translated =
                         originalCell.Translate(
@@ -79,14 +108,16 @@ namespace MindArrow.Board
                             deltaY * step
                         );
 
-                    if (!IsInside(translated))
+                    if (!IsInside(
+                            translated))
                     {
                         continue;
                     }
 
                     allOutside = false;
 
-                    if (otherCells.Contains(translated))
+                    if (otherCells.Contains(
+                            translated))
                     {
                         return false;
                     }
@@ -102,21 +133,26 @@ namespace MindArrow.Board
         }
 
         private HashSet<GridPosition>
-            BuildOtherOccupancy(int excludedArrowId)
+            BuildOtherOccupancy(
+                int excludedArrowId)
         {
             HashSet<GridPosition> occupied =
                 new();
 
-            foreach (KeyValuePair<int, ArrowData> pair
-                     in arrows)
+            foreach (
+                KeyValuePair<int, ArrowData> pair
+                in arrows)
             {
-                if (pair.Key == excludedArrowId)
+                if (pair.Key ==
+                    excludedArrowId)
                 {
                     continue;
                 }
 
                 occupied.UnionWith(
-                    ExpandPath(pair.Value)
+                    ExpandPath(
+                        pair.Value
+                    )
                 );
             }
 
@@ -124,7 +160,8 @@ namespace MindArrow.Board
         }
 
         private static HashSet<GridPosition>
-            ExpandPath(ArrowData arrow)
+            ExpandPath(
+                ArrowData arrow)
         {
             HashSet<GridPosition> cells =
                 new();
@@ -132,17 +169,21 @@ namespace MindArrow.Board
             IReadOnlyList<GridPosition> path =
                 arrow.Path;
 
-            if (path == null ||
+            if (
+                path == null ||
                 path.Count == 0)
             {
                 return cells;
             }
 
-            cells.Add(path[0]);
+            cells.Add(
+                path[0]
+            );
 
-            for (int i = 0;
-                 i < path.Count - 1;
-                 i++)
+            for (
+                int i = 0;
+                i < path.Count - 1;
+                i++)
             {
                 GridPosition start =
                     path[i];
@@ -150,42 +191,48 @@ namespace MindArrow.Board
                 GridPosition end =
                     path[i + 1];
 
-                int dx =
-                    System.Math.Sign(
-                        end.X - start.X
-                    );
-
-                int dy =
-                    System.Math.Sign(
-                        end.Y - start.Y
-                    );
-
                 bool horizontal =
                     start.Y == end.Y;
 
                 bool vertical =
                     start.X == end.X;
 
-                if (!horizontal &&
+                if (
+                    !horizontal &&
                     !vertical)
                 {
                     Debug.LogError(
-                        $"Arrow {arrow.Id} has " +
-                        "a diagonal path."
+                        $"Arrow {arrow.Id} has a diagonal path."
                     );
 
                     continue;
                 }
 
+                int deltaX =
+                    System.Math.Sign(
+                        end.X - start.X
+                    );
+
+                int deltaY =
+                    System.Math.Sign(
+                        end.Y - start.Y
+                    );
+
                 GridPosition current =
                     start;
 
-                while (current != end)
+                while (
+                    current != end)
                 {
                     current =
-                        current.Translate(dx, dy);
+                        current.Translate(
+                            deltaX,
+                            deltaY
+                        );
 
-                    cells.Add(current);
+                    cells.Add(
+                        current
+                    );
                 }
             }
 
@@ -226,6 +273,12 @@ namespace MindArrow.Board
 
                 case ArrowDirection.Left:
                     deltaX = -1;
+                    break;
+
+                default:
+                    Debug.LogError(
+                        $"Unsupported arrow direction: {direction}"
+                    );
                     break;
             }
         }
