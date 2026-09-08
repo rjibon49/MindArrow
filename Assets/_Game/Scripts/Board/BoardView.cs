@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using MindArrow.Gameplay;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,135 +18,180 @@ namespace MindArrow.Board
 
         [Header("Prototype Rendering")]
         [SerializeField, Min(2f)]
-        private float pathThickness = 14f;
+        private float pathThickness = 18f;
 
         [SerializeField, Min(4f)]
-        private float headSize = 30f;
+        private float headSize = 38f;
 
         private RectTransform boardRect;
 
-        private readonly List<GameObject> renderedObjects = new();
+        private readonly Dictionary<int, GameObject>
+            arrowRoots = new();
 
         private void Awake()
         {
-            boardRect = GetComponent<RectTransform>();
+            boardRect =
+                GetComponent<RectTransform>();
         }
 
-        public void RenderArrow(ArrowData arrow)
+        public void RenderArrow(
+            ArrowData arrow,
+            Action<int> clickedCallback)
         {
-            if (arrow == null)
-            {
-                Debug.LogError("ArrowData is null.", this);
-                return;
-            }
-
-            if (arrow.Path == null || arrow.Path.Count < 2)
+            if (arrow == null ||
+                arrow.Path == null ||
+                arrow.Path.Count < 2)
             {
                 Debug.LogError(
-                    "Arrow path needs at least two grid positions.",
+                    "Invalid ArrowData.",
                     this
                 );
 
                 return;
             }
 
-            for (int i = 0; i < arrow.Path.Count - 1; i++)
+            GameObject arrowRoot =
+                new(
+                    $"Arrow_{arrow.Id}",
+                    typeof(RectTransform),
+                    typeof(ArrowView)
+                );
+
+            arrowRoot.transform.SetParent(
+                transform,
+                false
+            );
+
+            ArrowView arrowView =
+                arrowRoot.GetComponent<ArrowView>();
+
+            arrowView.Initialize(
+                arrow.Id,
+                clickedCallback
+            );
+
+            arrowRoots[arrow.Id] =
+                arrowRoot;
+
+            for (int i = 0;
+                 i < arrow.Path.Count - 1;
+                 i++)
             {
                 CreateSegment(
+                    arrowRoot.transform,
                     arrow.Path[i],
                     arrow.Path[i + 1],
                     arrow.Color,
-                    arrow.Id,
                     i
                 );
             }
 
             CreateHead(
+                arrowRoot.transform,
                 arrow.Path[^1],
-                arrow.Color,
-                arrow.Id
+                arrow.Color
             );
         }
 
-        public void ClearRenderedArrows()
+        public void RemoveArrow(int arrowId)
         {
-            foreach (GameObject renderedObject in renderedObjects)
+            if (!arrowRoots.TryGetValue(
+                    arrowId,
+                    out GameObject arrowRoot))
             {
-                if (renderedObject != null)
-                {
-                    Destroy(renderedObject);
-                }
-            }
-
-            renderedObjects.Clear();
-        }
-
-        private void CreateSegment(
-            GridPosition start,
-            GridPosition end,
-            Color color,
-            int arrowId,
-            int segmentIndex)
-        {
-            bool horizontal = start.Y == end.Y;
-            bool vertical = start.X == end.X;
-
-            if (!horizontal && !vertical)
-            {
-                Debug.LogError(
-                    $"Arrow {arrowId} contains a diagonal segment.",
-                    this
-                );
-
                 return;
             }
 
-            Vector2 startPosition = GridToLocal(start);
-            Vector2 endPosition = GridToLocal(end);
+            arrowRoots.Remove(arrowId);
+
+            Destroy(arrowRoot);
+        }
+
+        public void Clear()
+        {
+            foreach (GameObject arrowRoot
+                     in arrowRoots.Values)
+            {
+                if (arrowRoot != null)
+                {
+                    Destroy(arrowRoot);
+                }
+            }
+
+            arrowRoots.Clear();
+        }
+
+        private void CreateSegment(
+            Transform parent,
+            GridPosition start,
+            GridPosition end,
+            Color color,
+            int segmentIndex)
+        {
+            bool horizontal =
+                start.Y == end.Y;
+
+            bool vertical =
+                start.X == end.X;
+
+            if (!horizontal &&
+                !vertical)
+            {
+                return;
+            }
+
+            Vector2 startPosition =
+                GridToLocal(start);
+
+            Vector2 endPosition =
+                GridToLocal(end);
 
             Vector2 midpoint =
-                (startPosition + endPosition) * 0.5f;
+                (startPosition + endPosition)
+                * 0.5f;
 
             float distance =
-                Vector2.Distance(startPosition, endPosition);
+                Vector2.Distance(
+                    startPosition,
+                    endPosition
+                );
 
-            Image image = CreateImage(
-                $"Arrow_{arrowId}_Segment_{segmentIndex}",
-                color
-            );
+            Image image =
+                CreateImage(
+                    parent,
+                    $"Segment_{segmentIndex}",
+                    color
+                );
 
             RectTransform rect =
                 image.rectTransform;
 
-            rect.anchoredPosition = midpoint;
+            rect.anchoredPosition =
+                midpoint;
 
-            if (horizontal)
-            {
-                rect.sizeDelta =
-                    new Vector2(
+            rect.sizeDelta =
+                horizontal
+                    ? new Vector2(
                         distance + pathThickness,
                         pathThickness
-                    );
-            }
-            else
-            {
-                rect.sizeDelta =
-                    new Vector2(
+                    )
+                    : new Vector2(
                         pathThickness,
                         distance + pathThickness
                     );
-            }
         }
 
         private void CreateHead(
+            Transform parent,
             GridPosition position,
-            Color color,
-            int arrowId)
+            Color color)
         {
-            Image image = CreateImage(
-                $"Arrow_{arrowId}_Head",
-                color
-            );
+            Image image =
+                CreateImage(
+                    parent,
+                    "Head",
+                    color
+                );
 
             RectTransform rect =
                 image.rectTransform;
@@ -159,7 +206,8 @@ namespace MindArrow.Board
                 );
         }
 
-        private Image CreateImage(
+        private static Image CreateImage(
+            Transform parent,
             string objectName,
             Color color)
         {
@@ -172,7 +220,7 @@ namespace MindArrow.Board
                 );
 
             gameObject.transform.SetParent(
-                transform,
+                parent,
                 false
             );
 
@@ -180,9 +228,10 @@ namespace MindArrow.Board
                 gameObject.GetComponent<Image>();
 
             image.color = color;
-            image.raycastTarget = false;
 
-            renderedObjects.Add(gameObject);
+            // IMPORTANT:
+            // Leave raycast enabled for clicking.
+            image.raycastTarget = true;
 
             return image;
         }
@@ -192,27 +241,32 @@ namespace MindArrow.Board
         {
             float cellSize =
                 Mathf.Min(
-                    boardRect.rect.width / columns,
-                    boardRect.rect.height / rows
+                    boardRect.rect.width
+                    / columns,
+                    boardRect.rect.height
+                    / rows
                 );
 
-            float boardWidth =
+            float width =
                 columns * cellSize;
 
-            float boardHeight =
+            float height =
                 rows * cellSize;
 
             float originX =
-                -boardWidth * 0.5f
-                + cellSize * 0.5f;
+                -width * 0.5f +
+                cellSize * 0.5f;
 
             float originY =
-                -boardHeight * 0.5f
-                + cellSize * 0.5f;
+                -height * 0.5f +
+                cellSize * 0.5f;
 
             return new Vector2(
-                originX + position.X * cellSize,
-                originY + position.Y * cellSize
+                originX +
+                position.X * cellSize,
+
+                originY +
+                position.Y * cellSize
             );
         }
     }
