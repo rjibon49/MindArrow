@@ -8,116 +8,86 @@ namespace MindArrow.Board
         private readonly int columns;
         private readonly int rows;
 
-        private readonly Dictionary<int, ArrowData> arrows =
-            new();
+        private readonly Dictionary<int, ArrowData> arrows = new();
 
+        public int Columns => columns;
+        public int Rows => rows;
         public int ArrowCount => arrows.Count;
 
-        public BoardModel(
-            int columns,
-            int rows)
+        public BoardModel(int columns, int rows)
         {
-            this.columns = columns;
-            this.rows = rows;
+            this.columns = Mathf.Max(2, columns);
+            this.rows = Mathf.Max(2, rows);
         }
 
-        public void AddArrow(
-            ArrowData arrow)
+        public void AddArrow(ArrowData arrow)
         {
             if (arrow == null)
             {
-                Debug.LogError(
-                    "Cannot add null arrow."
-                );
-
+                Debug.LogError("Cannot add null arrow.");
                 return;
             }
 
             arrows[arrow.Id] = arrow;
         }
 
-        public bool ContainsArrow(
-            int arrowId)
+        public bool ContainsArrow(int arrowId)
         {
-            return arrows.ContainsKey(
-                arrowId
-            );
+            return arrows.ContainsKey(arrowId);
         }
 
-        public bool TryGetArrow(
-            int arrowId,
-            out ArrowData arrow)
+        public bool TryGetArrow(int arrowId, out ArrowData arrow)
         {
-            return arrows.TryGetValue(
-                arrowId,
-                out arrow
-            );
+            return arrows.TryGetValue(arrowId, out arrow);
         }
 
-        public void RemoveArrow(
-            int arrowId)
+        public IReadOnlyCollection<int> GetArrowIds()
         {
-            arrows.Remove(
-                arrowId
-            );
+            // Return a snapshot so callers can safely iterate even if
+            // the model changes later in the same frame.
+            return new List<int>(arrows.Keys);
         }
 
-        public bool CanEscape(
-            int arrowId)
+        public void RemoveArrow(int arrowId)
         {
-            if (!arrows.TryGetValue(
-                    arrowId,
-                    out ArrowData arrow))
+            arrows.Remove(arrowId);
+        }
+
+        public bool CanEscape(int arrowId)
+        {
+            if (!arrows.TryGetValue(arrowId, out ArrowData arrow))
             {
                 return false;
             }
 
-            HashSet<GridPosition> movingCells =
-                ExpandPath(
-                    arrow
-                );
-
-            HashSet<GridPosition> otherCells =
-                BuildOtherOccupancy(
-                    arrowId
-                );
+            HashSet<GridPosition> movingCells = ExpandPath(arrow);
+            HashSet<GridPosition> otherCells = BuildOtherOccupancy(arrowId);
 
             GetDirectionDelta(
                 arrow.ExitDirection,
                 out int deltaX,
-                out int deltaY
-            );
+                out int deltaY);
 
-            int maxSteps =
-                columns + rows + 4;
+            int maxSteps = columns + rows + 4;
 
-            for (
-                int step = 1;
-                step <= maxSteps;
-                step++)
+            for (int step = 1; step <= maxSteps; step++)
             {
                 bool allOutside = true;
 
-                foreach (
-                    GridPosition originalCell
-                    in movingCells)
+                foreach (GridPosition originalCell in movingCells)
                 {
-                    GridPosition translated =
-                        originalCell.Translate(
-                            deltaX * step,
-                            deltaY * step
-                        );
+                    GridPosition translated = originalCell.Translate(
+                        deltaX * step,
+                        deltaY * step);
 
-                    if (!IsInside(
-                            translated))
+                    if (!IsInside(translated))
                     {
                         continue;
                     }
 
                     allOutside = false;
 
-                    if (otherCells.Contains(
-                            translated))
+                    if (otherCells.Contains(translated))
                     {
                         return false;
                     }
@@ -132,115 +102,65 @@ namespace MindArrow.Board
             return false;
         }
 
-        private HashSet<GridPosition>
-            BuildOtherOccupancy(
-                int excludedArrowId)
+        private HashSet<GridPosition> BuildOtherOccupancy(int excludedArrowId)
         {
-            HashSet<GridPosition> occupied =
-                new();
+            HashSet<GridPosition> occupied = new();
 
-            foreach (
-                KeyValuePair<int, ArrowData> pair
-                in arrows)
+            foreach (KeyValuePair<int, ArrowData> pair in arrows)
             {
-                if (pair.Key ==
-                    excludedArrowId)
+                if (pair.Key == excludedArrowId)
                 {
                     continue;
                 }
 
-                occupied.UnionWith(
-                    ExpandPath(
-                        pair.Value
-                    )
-                );
+                occupied.UnionWith(ExpandPath(pair.Value));
             }
 
             return occupied;
         }
 
-        private static HashSet<GridPosition>
-            ExpandPath(
-                ArrowData arrow)
+        private static HashSet<GridPosition> ExpandPath(ArrowData arrow)
         {
-            HashSet<GridPosition> cells =
-                new();
+            HashSet<GridPosition> cells = new();
+            IReadOnlyList<GridPosition> path = arrow.Path;
 
-            IReadOnlyList<GridPosition> path =
-                arrow.Path;
-
-            if (
-                path == null ||
-                path.Count == 0)
+            if (path == null || path.Count == 0)
             {
                 return cells;
             }
 
-            cells.Add(
-                path[0]
-            );
+            cells.Add(path[0]);
 
-            for (
-                int i = 0;
-                i < path.Count - 1;
-                i++)
+            for (int i = 0; i < path.Count - 1; i++)
             {
-                GridPosition start =
-                    path[i];
+                GridPosition start = path[i];
+                GridPosition end = path[i + 1];
 
-                GridPosition end =
-                    path[i + 1];
+                bool horizontal = start.Y == end.Y;
+                bool vertical = start.X == end.X;
 
-                bool horizontal =
-                    start.Y == end.Y;
-
-                bool vertical =
-                    start.X == end.X;
-
-                if (
-                    !horizontal &&
-                    !vertical)
+                if (!horizontal && !vertical)
                 {
-                    Debug.LogError(
-                        $"Arrow {arrow.Id} has a diagonal path."
-                    );
-
+                    Debug.LogError($"Arrow {arrow.Id} has a diagonal path.");
                     continue;
                 }
 
-                int deltaX =
-                    System.Math.Sign(
-                        end.X - start.X
-                    );
+                int deltaX = System.Math.Sign(end.X - start.X);
+                int deltaY = System.Math.Sign(end.Y - start.Y);
 
-                int deltaY =
-                    System.Math.Sign(
-                        end.Y - start.Y
-                    );
+                GridPosition current = start;
 
-                GridPosition current =
-                    start;
-
-                while (
-                    current != end)
+                while (current != end)
                 {
-                    current =
-                        current.Translate(
-                            deltaX,
-                            deltaY
-                        );
-
-                    cells.Add(
-                        current
-                    );
+                    current = current.Translate(deltaX, deltaY);
+                    cells.Add(current);
                 }
             }
 
             return cells;
         }
 
-        private bool IsInside(
-            GridPosition position)
+        private bool IsInside(GridPosition position)
         {
             return
                 position.X >= 0 &&
@@ -276,9 +196,7 @@ namespace MindArrow.Board
                     break;
 
                 default:
-                    Debug.LogError(
-                        $"Unsupported arrow direction: {direction}"
-                    );
+                    Debug.LogError($"Unsupported arrow direction: {direction}");
                     break;
             }
         }
